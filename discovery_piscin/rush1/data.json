@@ -1,0 +1,121 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Finish AI project report",
+      "desc": "",
+      "due": "2026-10-31",
+      "priority": "High",
+      "category": "Project",
+      "done": true
+    },
+    {
+      "id": 2,
+      "title": "Math assignment",
+      "desc": "",
+      "due": "2026-11-01",
+      "priority": "High",
+      "category": "Assignment",
+      "done": true
+    },
+    {
+      "id": 3,
+      "title": "Read chapter 6 (Robotics)",
+      "desc": "",
+      "due": "2026-11-02",
+      "priority": "Medium",
+      "category": "Personal",
+      "done": true
+    },
+    {
+      "id": 4,
+      "title": "Gym / Dance practice",
+      "desc": "",
+      "due": "2026-11-02",
+      "priority": "Low",
+      "category": "Personal",
+      "done": true
+    },
+    {
+      "id": 5,
+      "title": "English essay",
+      "desc": "",
+      "due": "2026-11-06",
+      "priority": "Medium",
+      "category": "Assignment",
+      "done": true
+    },
+    {
+      "id": 6,
+      "title": "Physics lab report",
+      "desc": "",
+      "due": "2026-11-04",
+      "priority": "Medium",
+      "category": "Assignment",
+      "done": true
+    },
+    {
+      "id": 7,
+      "title": "study",
+      "desc": "study maths",
+      "due": "2026-10-30",
+      "priority": "High",
+      "category": "Exam",
+      "done": false
+    }
+  ],
+  "sessions": [
+    {
+      "id": 1,
+      "subject": "AI Project",
+      "hours": 2,
+      "note": "",
+      "date": "2026-10-30"
+    },
+    {
+      "id": 2,
+      "subject": "Math",
+      "hours": 1.5,
+      "note": "",
+      "date": "2026-10-29"
+    },
+    {
+      "id": 3,
+      "subject": "Robotics",
+      "hours": 1.25,
+      "note": "",
+      "date": "2026-10-28"
+    }
+  ],
+  "expenses": [
+    {
+      "id": 1,
+      "category": "Food",
+      "amount": 12000,
+      "note": "",
+      "date": "2026-10-30"
+    },
+    {
+      "id": 2,
+      "category": "Transport",
+      "amount": 5000,
+      "note": "",
+      "date": "2026-10-30"
+    },
+    {
+      "id": 3,
+      "category": "Books",
+      "amount": 8500,
+      "note": "",
+      "date": "2026-10-30"
+    },
+    {
+      "id": 4,
+      "category": "Others",
+      "amount": 13000,
+      "note": "",
+      "date": "2026-10-30"
+    }
+  ],
+  "budget": 60000.0
+}
