@@ -1,0 +1,26 @@
+CYBERGUARD THREAT INTELLIGENCE REPORT
+Generated: 2026-10-30 11:09
+
+PHISHING (3 recorded)
+  What: Fake messages or websites designed to trick users into sharing sensitive information.
+  First step: Verify the sender, inspect links, and report suspicious messages.
+
+MALWARE (0 recorded)
+  What: Software designed to damage systems, steal information, or gain unauthorized access.
+  First step: Document affected devices and follow approved isolation procedures.
+
+BRUTE FORCE (0 recorded)
+  What: Repeated attempts to guess passwords or access accounts.
+  First step: Review authentication logs and apply approved account protections.
+
+SUSPICIOUS LOGIN (1 recorded)
+  What: A sign-in that differs from the expected device, location, or user behaviour.
+  First step: Verify the user and review related sign-in activity.
+
+DATA EXFILTRATION (0 recorded)
+  What: Potential unauthorized transfer of information outside an environment.
+  First step: Record observations and escalate through the incident process.
+
+UNAUTHORIZED ACCESS (0 recorded)
+  What: Access to a resource without the required permission.
+  First step: Preserve relevant details and notify the responsible security team.

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 CyberGuard - Threat Intelligence & Incident Response
 Tkinter dashboard (educational simulator, local data only).
@@ -6,14 +7,34 @@ Tkinter dashboard (educational simulator, local data only).
   python3 main.py --gui    -> graphical dashboard
 """
 
+# ------------------------------------------------------------
+# IMPORTS
+# ------------------------------------------------------------
+
+# sys gives access to command-line arguments (used for --gui).
 import sys
+
+# os is imported for operating-system helpers.
 import os
+
+# json saves and loads incidents and settings.
 import json
+
+# csv exports incident records to a spreadsheet-friendly file.
 import csv
+
+# random draws the decorative "hacker" art and network nodes.
 import random
+
+# tkinter is Python's built-in GUI library; ttk adds themed widgets
+# (tables, combo boxes, scrollbars); messagebox and filedialog show pop-ups.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+
+# Path builds file paths that work on any operating system.
 from pathlib import Path
+
+# datetime / timedelta handle incident dates and "x min ago" text.
 from datetime import datetime, timedelta
 
 # Pillow is optional: without it the dashboard still works, just without
@@ -21,17 +42,32 @@ from datetime import datetime, timedelta
 try:
     from PIL import Image, ImageEnhance, ImageTk
     HAS_PIL = True
+
+# If Pillow is not installed, remember that so we can skip the pictures.
 except ImportError:
     HAS_PIL = False
 
+# ------------------------------------------------------------
+# FILE LOCATIONS
+# ------------------------------------------------------------
+
+# Folder that contains this Python file.
 APP_DIR = Path(__file__).resolve().parent
+
+# Incident records are stored here (list of dictionaries in JSON).
 DATA_FILE = APP_DIR / "incidents.json"
+
+# The analyst name is stored here.
 SETTINGS_FILE = APP_DIR / "settings.json"
+
+# Folder holding the background pictures 1.jpg ... 4.jpg.
 IMAGE_DIR = APP_DIR / "images"
 
 # ------------------------------------------------------------
 # COLOURS AND CONSTANTS
 # ------------------------------------------------------------
+
+# Hex colour codes used everywhere so the whole theme can be changed here.
 BG = "#030b18"
 SIDEBAR = "#061329"
 PANEL = "#071a32"
@@ -49,22 +85,30 @@ GREEN = "#00d6a0"
 YELLOW = "#ffd166"
 DARK = "#04122a"
 
+# Allowed values for incident fields. Their ORDER matters:
+# the position in STATUSES is used to check that status only moves forward.
 SEVERITIES = ["Low", "Medium", "High", "Critical"]
 STATUSES = ["Open", "Investigating", "Contained", "Resolved"]
 TYPES = ["Phishing", "Malware", "Brute Force", "Suspicious Login",
          "Data Breach", "Data Exfiltration", "Unauthorized Access", "Other"]
 
+# Dictionaries that map a word to a colour (used for pills and charts).
 SEV_COLOR = {"Low": GREEN, "Medium": ORANGE, "High": RED, "Critical": PURPLE}
 STATUS_BG = {"Open": "#0f4c8a", "Investigating": "#8b1f45",
              "Contained": "#0f5c4a", "Resolved": "#1d5a3a"}
 TYPE_COLORS = [RED, ORANGE, BLUE, PURPLE, GREEN, CYAN]
 LEVEL_COLOR = {"Low": GREEN, "Medium": ORANGE, "High": RED}
 
+# Risk-score rules: a starting value for each severity ...
 BASE_RISK = {"Low": 15, "Medium": 35, "High": 60, "Critical": 80}
+
+# ... plus an extra value for each incident type.
 TYPE_RISK = {"Phishing": 10, "Malware": 15, "Brute Force": 12,
              "Suspicious Login": 10, "Data Breach": 20,
              "Data Exfiltration": 18}
 
+# Which incident types belong to which area of the company.
+# Used by the "Security Risk Level" card on the dashboard.
 CATEGORY_TYPES = {
     "Network": ["Brute Force", "Data Exfiltration"],
     "Applications": ["Phishing", "Other"],
@@ -73,6 +117,7 @@ CATEGORY_TYPES = {
     "Users": ["Suspicious Login", "Unauthorized Access"],
 }
 
+# Default note text for the demo incidents, chosen by incident type.
 NOTES_BY_TYPE = {
     "Phishing": "Suspicious email or link reported",
     "Malware": "Suspicious file needs review",
@@ -82,6 +127,8 @@ NOTES_BY_TYPE = {
     "Data Breach": "Possible data exposure",
 }
 
+# Learning cards for the Threat Intelligence page:
+# (name, colour, description, recommended first step).
 THREATS = [
     ("PHISHING", RED,
      "Fake messages or websites designed to trick users into sharing "
@@ -107,6 +154,7 @@ THREATS = [
      "Preserve relevant details and notify the responsible security team."),
 ]
 
+# Reports that can be generated: (short code, display name).
 REPORTS = [
     ("weekly", "Weekly Security Report"),
     ("summary", "Incident Summary (Last 7 Days)"),
@@ -117,7 +165,7 @@ REPORTS = [
 PAGE_IMAGES = {"Dashboard": 1, "Threat Intelligence": 2, "Reports": 3,
                "Analytics": 4, "Settings": 1}
 
-# id, title, type, severity, status, ip, day, time
+# Demo data. Each tuple is: id, title, type, severity, status, ip, day, time
 SEED = [
     (1024, "Suspicious login detected", "Suspicious Login", "High", "Investigating", "192.168.1.45", "Oct 28", "21:32"),
     (1023, "Malware attachment flagged", "Malware", "High", "Open", "203.0.113.24", "Oct 28", "18:17"),
@@ -145,6 +193,7 @@ SEED = [
     (1001, "CEO impersonation email", "Phishing", "Low", "Resolved", "172.16.9.9", "Oct 22", "08:50"),
 ]
 
+# Country names used by the simulated geolocation (see country_of below).
 COUNTRIES = ["United States", "China", "Russia", "Germany",
              "Vietnam", "Brazil", "India"]
 
@@ -154,6 +203,8 @@ COUNTRIES = ["United States", "China", "Russia", "Germany",
 # ------------------------------------------------------------
 
 def build_seed():
+    # Turn every demo tuple into a dictionary (the format used by the app).
+    # A list of dictionaries = many incident records.
     return [
         {"id": iid, "title": title, "type": kind, "severity": sev,
          "status": status, "source": ip, "created": f"{day}, {clock}",
@@ -163,17 +214,27 @@ def build_seed():
 
 
 def risk_score(incident):
+    # Start from the severity value (15 if the severity is unknown).
     score = BASE_RISK.get(incident.get("severity"), 15)
+
+    # Add extra points for the incident type (5 if the type is unknown).
     score += TYPE_RISK.get(incident.get("type"), 5)
+
+    # Add 5 points when the incident has notes.
     if incident.get("notes"):
         score += 5
+
+    # The score can never be above 100.
     return min(100, score)
 
 
 def valid_ip(text):
+    # An IPv4 address has four parts separated by dots.
     parts = text.split(".")
     if len(parts) != 4:
         return False
+
+    # Each part must be digits only and not bigger than 255.
     for part in parts:
         if not part.isdigit() or int(part) > 255:
             return False
@@ -181,20 +242,30 @@ def valid_ip(text):
 
 
 def parse_created(text):
+    # Convert text such as "Oct 28, 21:32" into a datetime object.
     try:
         moment = datetime.strptime(str(text), "%b %d, %H:%M")
+
+    # Text in the wrong format gives None instead of crashing.
     except ValueError:
         return None
+
+    # The saved text has no year, so use the current year.
     now = datetime.now()
     moment = moment.replace(year=now.year)
+
+    # If that puts the date in the future, it belongs to last year.
     if moment > now + timedelta(days=1):
         moment = moment.replace(year=now.year - 1)
     return moment
 
 
 def time_ago(moment):
+    # Turn a datetime into friendly text: "5 min ago", "3 hr ago", "2 d ago".
     if moment is None:
         return ""
+
+    # How many seconds have passed (never negative).
     seconds = max(0, int((datetime.now() - moment).total_seconds()))
     if seconds < 3600:
         return f"{max(1, seconds // 60)} min ago"
@@ -205,16 +276,23 @@ def time_ago(moment):
 
 def country_of(ip):
     """Simulated geolocation for the educational map."""
+
+    # Use the first number of the IP address.
     try:
         first = int(str(ip).split(".")[0])
     except ValueError:
         return "Unknown"
+
+    # These ranges are private/local networks.
     if first in (10, 127, 172, 192):
         return "Local Network"
+
+    # Otherwise pick a country from the list (fake but consistent per IP).
     return COUNTRIES[first % len(COUNTRIES)]
 
 
 def level_of(score):
+    # Convert a number into a level name.
     if score < 40:
         return "Low"
     if score < 70:
@@ -223,6 +301,7 @@ def level_of(score):
 
 
 def incident_code(incident_id):
+    # Display code shown to the user, e.g. CG-1024.
     return f"CG-{incident_id}"
 
 
@@ -234,37 +313,54 @@ class BackgroundManager:
     """Loads, darkens and crops background pictures to any size."""
 
     def __init__(self, brightness=0.42):
+        # How dark the pictures are made (1.0 = original brightness).
         self.brightness = brightness
+
+        # sources keeps the original pictures; cache keeps resized copies.
         self.sources = {}
         self.cache = {}
 
     def load(self, number):
+        # Reuse a picture that was already loaded.
         if number in self.sources:
             return self.sources[number]
+
         image = None
         path = IMAGE_DIR / f"{number}.jpg"
+
+        # Load only if Pillow exists and the file exists.
         if HAS_PIL and path.is_file():
             try:
                 image = Image.open(path).convert("RGB")
+
+                # Darken the picture so white text stays readable on it.
                 image = ImageEnhance.Brightness(image).enhance(self.brightness)
             except Exception as error:
                 print(f"Could not load background {path.name}: {error}")
                 image = None
+
+        # Pillow exists but the file is missing: tell the developer.
         elif HAS_PIL:
             print(f"Background image not found: {path}")
+
         self.sources[number] = image
         return image
 
     def cover(self, number, width, height):
         """Return a PhotoImage that covers width x height (or None)."""
         source = self.load(number)
+
+        # No picture or a too-small area: nothing to draw.
         if source is None or width < 2 or height < 2:
             return None
+
+        # Reuse a resized copy if we already made one for this size.
         key = (number, width, height)
         if key in self.cache:
             return self.cache[key]
 
         # Cover the area without stretching the picture.
+        # Compare the picture's shape (ratio) with the target's shape.
         source_ratio = source.width / source.height
         target_ratio = width / height
         if source_ratio > target_ratio:
@@ -274,13 +370,17 @@ class BackgroundManager:
             new_w = width
             new_h = int(width / source_ratio)
 
+        # Newer Pillow versions keep resampling modes inside Image.Resampling.
         resampling = getattr(Image, "Resampling", Image)
         resized = source.resize((max(new_w, width), max(new_h, height)),
                                 resampling.LANCZOS)
+
+        # Crop the extra part from the centre so the result is exactly width x height.
         left = (resized.width - width) // 2
         top = (resized.height - height) // 2
         resized = resized.crop((left, top, left + width, top + height))
 
+        # Convert to a Tkinter-compatible image and store it in the cache.
         photo = ImageTk.PhotoImage(resized)
         if len(self.cache) > 24:
             self.cache.clear()
@@ -295,6 +395,8 @@ class BackgroundManager:
 class ScrollFrame(tk.Frame):
     def __init__(self, parent, bg=BG):
         super().__init__(parent, bg=bg)
+
+        # A Canvas + Scrollbar pair is the standard way to scroll in Tkinter.
         self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0)
         self.bar = ttk.Scrollbar(self, orient="vertical",
                                  command=self.canvas.yview)
@@ -302,13 +404,18 @@ class ScrollFrame(tk.Frame):
         self.bar.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
 
+        # "body" is the frame where each page puts its widgets.
+        # It lives inside the canvas so the canvas can scroll it.
         self.body = tk.Frame(self.canvas, bg=bg)
         self.window = self.canvas.create_window(
             (0, 0), window=self.body, anchor="nw")
+
+        # Recalculate sizes when the content or the window changes size.
         self.body.bind("<Configure>", self._on_body)
         self.canvas.bind("<Configure>", lambda e: self._stretch())
 
     def _on_body(self, _event):
+        # Update the scrollable area to match the content size.
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self._stretch()
 
@@ -328,8 +435,10 @@ class ScrollFrame(tk.Frame):
 
 class CyberGuardApp:
     def __init__(self, root):
+        # root is the main Tkinter window.
         self.root = root
         root.title("CyberGuard | Threat Intelligence & Incident Response")
+
         # Never open a window bigger than the screen.
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         width, height = min(1500, sw - 40), min(900, sh - 90)
@@ -337,6 +446,7 @@ class CyberGuardApp:
         root.minsize(min(1100, width), min(650, height))
         root.configure(bg=BG)
 
+        # Shared objects and state used by all pages.
         self.bgm = BackgroundManager()
         self.incidents = []
         self.search_query = ""
@@ -346,15 +456,19 @@ class CyberGuardApp:
         self.tree = None
         self.threat_entry = None
 
+        # Start-up order: load files, set styles, draw the window, show a page.
         self.load_settings()
         self.load_data()
         self.setup_styles()
         self.build_shell()
         self.show_page("Dashboard")
 
+        # Mouse-wheel scrolling (Windows/macOS use MouseWheel, Linux uses Button-4/5).
         root.bind_all("<MouseWheel>", self.on_wheel)
         root.bind_all("<Button-4>", self.on_wheel)
         root.bind_all("<Button-5>", self.on_wheel)
+
+        # Start the repeating clock update.
         self.tick_clock()
 
     # --------------------------------------------------------
@@ -362,13 +476,17 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def load_settings(self):
+        # Read the analyst name from settings.json.
         try:
             data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
             self.analyst = str(data.get("analyst", "Anji")) or "Anji"
+
+        # Missing or broken file: use the default name.
         except (OSError, ValueError, AttributeError):
             self.analyst = "Anji"
 
     def save_settings(self):
+        # Save the analyst name; ignore errors so the app never crashes here.
         try:
             SETTINGS_FILE.write_text(
                 json.dumps({"analyst": self.analyst}, indent=2),
@@ -377,28 +495,41 @@ class CyberGuardApp:
             pass
 
     def load_data(self):
+        # records stays None if loading fails; then demo data is used.
         records = None
         try:
             if DATA_FILE.exists():
                 records = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+
+                # The file must contain a list of incidents.
                 if not isinstance(records, list):
                     raise ValueError("bad format")
         except (OSError, ValueError):
             records = None
 
+        # Use the demo incidents when there is no valid file.
         if records is None:
             records = build_seed()
 
+        # Clean every record so a damaged file cannot crash the GUI.
         clean = []
         for item in records:
+
+            # Skip anything that is not a dictionary.
             if not isinstance(item, dict):
                 continue
+
+            # The ID must be a number; otherwise skip the record.
             try:
                 item["id"] = int(item.get("id"))
             except (TypeError, ValueError):
                 continue
+
+            # setdefault adds a value only when the key is missing.
             item.setdefault("title", "Untitled")
             item.setdefault("type", "Other")
+
+            # Replace invalid severity/status with safe defaults.
             if item.get("severity") not in SEVERITIES:
                 item["severity"] = "Low"
             if item.get("status") not in STATUSES:
@@ -408,10 +539,12 @@ class CyberGuardApp:
             item.setdefault("notes", "")
             clean.append(item)
 
+        # Keep the cleaned list and write it back to disk.
         self.incidents = clean
         self.save_data()
 
     def save_data(self):
+        # Write all incidents to incidents.json (indent=2 = readable file).
         try:
             DATA_FILE.write_text(json.dumps(self.incidents, indent=2),
                                  encoding="utf-8")
@@ -419,38 +552,49 @@ class CyberGuardApp:
             messagebox.showerror("Save error", str(error))
 
     def find(self, incident_id):
+        # Linear search: return the incident with this ID, or None.
         for item in self.incidents:
             if item["id"] == incident_id:
                 return item
         return None
 
     def next_id(self):
+        # Highest existing ID + 1 (the minimum starting ID is 1001).
         return max([i["id"] for i in self.incidents] + [1000]) + 1
 
     def severity_counts(self):
+        # Dictionary comprehension: how many incidents per severity level.
         return {level: sum(1 for i in self.incidents
                            if i["severity"] == level)
                 for level in ("Critical", "High", "Medium", "Low")}
 
     def type_counts(self):
+        # Count incidents per type with a dictionary.
         tally = {}
         for item in self.incidents:
             tally[item["type"]] = tally.get(item["type"], 0) + 1
+
+        # Sort by count (largest first), then alphabetically.
         return sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))
 
     def active_incidents(self):
+        # Incidents that still need work.
         return [i for i in self.incidents
                 if i["status"] in ("Open", "Investigating")]
 
     def alert_incidents(self):
+        # Active incidents with High or Critical severity (shown on the bell).
         return [i for i in self.active_incidents()
                 if i["severity"] in ("High", "Critical")]
 
     def top_sources(self):
+        # Count incidents per (simulated) country.
         tally = {}
         for item in self.incidents:
             name = country_of(item["source"])
             tally[name] = tally.get(name, 0) + 1
+
+        # Keep the 5 biggest and group the rest as "Others".
         ranked = sorted(tally.items(), key=lambda kv: -kv[1])
         top = ranked[:5]
         other = sum(v for _, v in ranked[5:])
@@ -459,15 +603,19 @@ class CyberGuardApp:
         return top
 
     def daily_series(self):
+        # Count incidents per calendar day.
         counts = {}
         for item in self.incidents:
             moment = parse_created(item.get("created"))
             if moment:
                 counts[moment.date()] = counts.get(moment.date(), 0) + 1
+
+        # Use the last 7 days that have data; return labels and values for the chart.
         days = sorted(counts)[-7:]
         return [d.strftime("%b %d") for d in days], [counts[d] for d in days]
 
     def category_levels(self):
+        # For each area, average the risk of its active incidents.
         result = {}
         for name, kinds in CATEGORY_TYPES.items():
             scores = [risk_score(i) for i in self.active_incidents()
@@ -476,6 +624,7 @@ class CyberGuardApp:
         return result
 
     def overall_risk(self):
+        # Average risk of all active incidents -> (level name, number).
         scores = [risk_score(i) for i in self.active_incidents()]
         if not scores:
             return "Low", 10
@@ -483,13 +632,18 @@ class CyberGuardApp:
         return level_of(average), int(average)
 
     def filtered_incidents(self):
+        # Start with every incident, then apply the filters one by one.
         records = list(self.incidents)
+
+        # hasattr checks whether the filter widgets exist yet.
         sev = self.sev_filter.get() if hasattr(self, "sev_filter") else "All"
         status = self.status_filter.get() if hasattr(self, "status_filter") else "All"
         if sev != "All":
             records = [i for i in records if i["severity"] == sev]
         if status != "All":
             records = [i for i in records if i["status"] == status]
+
+        # Keyword search: all fields are joined into one text and searched.
         if self.search_query:
             query = self.search_query.lower()
             records = [
@@ -500,6 +654,8 @@ class CyberGuardApp:
                      ("title", "type", "severity", "status",
                       "source", "notes")]).lower()
             ]
+
+        # Newest incident first.
         return sorted(records, key=lambda i: i["id"], reverse=True)
 
     # --------------------------------------------------------
@@ -507,9 +663,14 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def status_error(self, incident, new_status):
+        # Returns an error message if the change is not allowed, else None.
         old = incident["status"]
+
+        # Rule: status can only move forward in the STATUSES list.
         if STATUSES.index(new_status) <= STATUSES.index(old):
             return "Status can only move forward (resolved cases stay closed)."
+
+        # Rule: High/Critical incidents must go through Investigating first.
         if (incident["severity"] in ("High", "Critical")
                 and old == "Open" and new_status != "Investigating"):
             return "High/Critical incidents must be Investigating first."
@@ -520,6 +681,7 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def setup_styles(self):
+        # ttk styles colour the table, combo boxes and scrollbar to match the theme.
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", background=PANEL, foreground=WHITE,
@@ -539,17 +701,21 @@ class CyberGuardApp:
                   foreground=[("readonly", WHITE)])
         style.configure("Vertical.TScrollbar", background=CARD2,
                         troughcolor=BG, arrowcolor=CYAN, bordercolor=BG)
+
+        # The drop-down list of a combo box is a separate widget, styled here.
         self.root.option_add("*TCombobox*Listbox.background", CARD)
         self.root.option_add("*TCombobox*Listbox.foreground", WHITE)
         self.root.option_add("*TCombobox*Listbox.selectBackground", BLUE)
 
     def label(self, parent, text, size=10, color=WHITE, bold=False,
               bg=PANEL, **kwargs):
+        # Shortcut that creates a text label with the app's font and colours.
         return tk.Label(parent, text=text, bg=bg, fg=color,
                         font=("Arial", size, "bold" if bold else "normal"),
                         **kwargs)
 
     def button(self, parent, text, command, bg=CARD2, fg=WHITE, **kwargs):
+        # pop removes padx/pady from kwargs (with defaults) so they can be set below.
         padx = kwargs.pop("padx", 10)
         pady = kwargs.pop("pady", 7)
         return tk.Button(parent, text=text, command=command, bg=bg, fg=fg,
@@ -559,16 +725,19 @@ class CyberGuardApp:
                          **kwargs)
 
     def panel(self, parent, bg=PANEL):
+        # A frame with a thin border: the "card" look used all over the app.
         return tk.Frame(parent, bg=bg, highlightbackground=BORDER,
                         highlightthickness=1)
 
     def pill(self, parent, text, fill, fg=WHITE, bg=PANEL):
+        # A small coloured badge (used for severity and status).
         holder = tk.Frame(parent, bg=bg)
         tk.Label(holder, text=text, bg=fill, fg=fg,
                  font=("Arial", 8, "bold"), padx=7, pady=1).pack(anchor="w")
         return holder
 
     def sev_pill(self, parent, severity, bg=PANEL):
+        # Dark text on light colours, white text on strong colours.
         fg = WHITE if severity in ("High", "Critical") else DARK
         return self.pill(parent, severity, SEV_COLOR.get(severity, MUTED), fg, bg)
 
@@ -576,11 +745,14 @@ class CyberGuardApp:
         return self.pill(parent, status, STATUS_BG.get(status, CARD2), WHITE, bg)
 
     def make_dialog(self, title, width, height):
+        # Create a pop-up window that sits on top of the main window.
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
         dialog.geometry(f"{width}x{height}")
         dialog.configure(bg=BG)
         dialog.transient(self.root)
+
+        # grab_set blocks the main window until this dialog is closed (modal).
         try:
             dialog.wait_visibility()
             dialog.grab_set()
@@ -593,10 +765,12 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def build_shell(self):
+        # Left column: the navigation sidebar (fixed width 260).
         self.sidebar = tk.Frame(self.root, bg=SIDEBAR, width=260)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
+        # Right area: top bar + the page content.
         self.workspace = tk.Frame(self.root, bg=BG)
         self.workspace.pack(side="left", fill="both", expand=True)
 
@@ -604,18 +778,22 @@ class CyberGuardApp:
         self.build_navigation()
         self.build_topbar()
 
+        # Status line at the very bottom of the window.
         self.label(self.workspace,
                    "● SYSTEM ONLINE     |     EDUCATIONAL SIMULATOR     |     LOCAL DATA ONLY",
                    8, GREEN, True, bg=BG, anchor="w"
                    ).pack(side="bottom", fill="x", padx=20, pady=(0, 6))
 
+        # page_host is emptied and refilled every time the page changes.
         self.page_host = tk.Frame(self.workspace, bg=BG)
         self.page_host.pack(fill="both", expand=True)
 
     def build_brand(self):
+        # Logo and application name at the top of the sidebar.
         brand = tk.Frame(self.sidebar, bg=SIDEBAR)
         brand.pack(fill="x", padx=10, pady=(20, 14))
 
+        # The shield logo is drawn with canvas shapes (no image file needed).
         logo = tk.Canvas(brand, width=44, height=52, bg=SIDEBAR,
                          highlightthickness=0)
         logo.pack(side="left", padx=(0, 6))
@@ -629,15 +807,18 @@ class CyberGuardApp:
         self.label(words, "THREAT INTELLIGENCE", 7, CYAN, True, bg=SIDEBAR).pack(anchor="w")
         self.label(words, "& INCIDENT RESPONSE", 7, MUTED, bg=SIDEBAR).pack(anchor="w")
 
+        # A thin separator line under the logo.
         tk.Frame(self.sidebar, bg=BORDER, height=1).pack(
             fill="x", padx=14, pady=(0, 10))
 
     def build_navigation(self):
+        # nav_buttons remembers each button so the active page can be highlighted.
         self.nav_buttons = {}
         pages = [("Dashboard", "⌂"), ("Incidents", "⚠"),
                  ("Threat Intelligence", "◉"), ("Reports", "▤"),
                  ("Analytics", "▥"), ("Settings", "⚙")]
 
+        # One button per page. p=page stores the right page name in each lambda.
         for page, symbol in pages:
             btn = tk.Button(
                 self.sidebar, text=f"  {symbol}  {page}", anchor="w",
@@ -648,11 +829,13 @@ class CyberGuardApp:
             btn.pack(fill="x", padx=9, pady=2)
             self.nav_buttons[page] = btn
 
+        # Decorative hooded-hacker drawing; redrawn whenever the size changes.
         art = tk.Canvas(self.sidebar, bg=SIDEBAR, highlightthickness=0)
         art.pack(fill="both", expand=True, pady=6)
         art.bind("<Configure>",
                  lambda e: self.draw_hacker(art, e.width, e.height))
 
+        # Four slogan words under the drawing.
         for text, color in [("┃ DETECT", CYAN), ("┃ ANALYZE", ORANGE),
                             ("┃ RESPOND", ORANGE), ("┃ PROTECT", GREEN)]:
             self.label(self.sidebar, text, 10, color, True,
@@ -662,6 +845,7 @@ class CyberGuardApp:
                    bg=SIDEBAR).pack(anchor="w", padx=19, pady=16)
 
     def build_topbar(self):
+        # Top bar: search box on the left, bell/clock/user on the right.
         bar = tk.Frame(self.workspace, bg=SIDEBAR, height=66)
         bar.pack(fill="x")
         bar.pack_propagate(False)
@@ -670,6 +854,7 @@ class CyberGuardApp:
                                 highlightthickness=1)
         search_frame.pack(side="left", padx=18, pady=11)
 
+        # Search box with a grey-hint text that disappears when clicked.
         self.search_entry = tk.Entry(
             search_frame, width=42, bg=CARD, fg=WHITE,
             insertbackground=WHITE, relief="flat", font=("Arial", 10))
@@ -688,6 +873,7 @@ class CyberGuardApp:
         self.user_label.pack(anchor="w")
         self.label(person, "Security Analyst", 8, MUTED, bg=SIDEBAR).pack(anchor="w")
 
+        # Round avatar drawn from simple shapes.
         avatar = tk.Canvas(bar, width=42, height=42, bg=SIDEBAR,
                            highlightthickness=0)
         avatar.pack(side="right", padx=4)
@@ -696,13 +882,16 @@ class CyberGuardApp:
         avatar.create_arc(8, 22, 34, 46, start=0, extent=180,
                           fill="#d9d4ff", outline="")
 
+        # Vertical separator line.
         tk.Frame(bar, bg=BORDER, width=1).pack(side="right", fill="y", pady=12, padx=8)
 
+        # StringVar: changing its text automatically updates the label.
         self.clock_var = tk.StringVar()
         clock = tk.Label(bar, textvariable=self.clock_var, bg=SIDEBAR,
                          fg=WHITE, font=("Arial", 9), justify="center")
         clock.pack(side="right", padx=8)
 
+        # Notification bell drawn with canvas shapes.
         self.bell = tk.Canvas(bar, width=44, height=44, bg=SIDEBAR,
                               highlightthickness=0, cursor="hand2")
         self.bell.pack(side="right", padx=8)
@@ -712,6 +901,8 @@ class CyberGuardApp:
         self.bell.create_line(32, 20, 32, 29, fill=WHITE, width=2)
         self.bell.create_line(9, 30, 35, 30, fill=WHITE, width=2)
         self.bell.create_oval(19, 32, 25, 37, fill=WHITE, outline="")
+
+        # Red badge with the number of active high-severity alerts.
         self.bell_badge = self.bell.create_oval(26, 2, 40, 16, fill=RED, outline="")
         self.bell_text = self.bell.create_text(33, 9, text="0", fill=WHITE,
                                                font=("Arial", 8, "bold"))
@@ -719,13 +910,16 @@ class CyberGuardApp:
         self.tick_clock_now()
 
     def tick_clock_now(self):
+        # Write the current time and date into the clock label.
         self.clock_var.set(datetime.now().strftime("%H:%M\n%b %d, %Y"))
 
     def tick_clock(self):
+        # Update the clock, then ask Tkinter to call this again in 20 seconds.
         self.tick_clock_now()
         self.root.after(20000, self.tick_clock)
 
     def refresh_bell(self):
+        # Update the number on the bell; hide the badge when there are no alerts.
         count = len(self.alert_incidents())
         self.bell.itemconfigure(self.bell_text, text=str(count))
         state = "normal" if count else "hidden"
@@ -733,6 +927,7 @@ class CyberGuardApp:
         self.bell.itemconfigure(self.bell_text, state=state)
 
     def show_alert_popup(self):
+        # Clicking the bell lists all active high-severity incidents.
         alerts = self.alert_incidents()
         if not alerts:
             messagebox.showinfo("Alerts", "No active high-severity alerts.")
@@ -742,10 +937,12 @@ class CyberGuardApp:
         messagebox.showwarning("Active high-severity alerts", "\n".join(lines))
 
     def clear_search_hint(self, _event=None):
+        # Remove the hint text the first time the user clicks the search box.
         if self.search_entry.get().startswith("Search incidents"):
             self.search_entry.delete(0, "end")
 
     def search_incidents(self):
+        # Read the search text, ignore the hint, then show the Incidents page.
         query = self.search_entry.get().strip()
         if query.startswith("Search incidents"):
             query = ""
@@ -753,14 +950,19 @@ class CyberGuardApp:
         self.show_page("Incidents")
 
     def on_wheel(self, event):
+        # Scroll the current page with the mouse wheel.
         sf = self.scroll
         if sf is None or not sf.winfo_exists():
             return
+
+        # Ignore wheel events that happen inside pop-up dialogs.
         try:
             if event.widget.winfo_toplevel() is not self.root:
                 return
         except (AttributeError, KeyError, tk.TclError):
             return
+
+        # Linux sends Button-4 (up) / Button-5 (down); Windows/macOS send delta.
         if getattr(event, "num", 0) == 4:
             step = -1
         elif getattr(event, "num", 0) == 5:
@@ -775,20 +977,26 @@ class CyberGuardApp:
 
     def show_page(self, page):
         self.current_page = page
+
+        # Remove the old page widgets.
         for widget in self.page_host.winfo_children():
             widget.destroy()
         self.tree = None
         self.threat_entry = None
 
+        # Highlight the sidebar button of the active page.
         for name, btn in self.nav_buttons.items():
             btn.configure(bg="#102b63" if name == page else SIDEBAR,
                           fg=CYAN if name == page else MUTED)
 
+        # Create a fresh scrollable area for the new page.
         self.scroll = ScrollFrame(self.page_host)
         self.scroll.pack(fill="both", expand=True, padx=18, pady=(12, 4))
         self.body = self.scroll.body
         self.refresh_bell()
 
+        # A dictionary maps each page name to the method that draws it,
+        # then the chosen method is called with ().
         {
             "Dashboard": self.dashboard_page,
             "Incidents": self.incidents_page,
@@ -804,6 +1012,8 @@ class CyberGuardApp:
         canvas = tk.Canvas(self.body, height=74, bg=PANEL,
                            highlightthickness=1, highlightbackground=BORDER)
         canvas.pack(fill="x", pady=(2, 12))
+
+        # Redraw the banner whenever its width changes.
         canvas.bind("<Configure>",
                     lambda e: self.draw_banner(canvas, e.width, e.height,
                                                title, subtitle, image_no, False))
@@ -813,12 +1023,19 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def draw_hacker(self, canvas, w, h):
+        # Clear the canvas, then draw everything again for the new size.
         canvas.delete("all")
+
+        # A seeded random generator gives the SAME pattern on every redraw.
         rng = random.Random(5)
+
+        # Background of random "code" symbols.
         for _ in range(55):
             canvas.create_text(rng.randint(0, max(w, 1)), rng.randint(0, max(h, 1)),
                                text=rng.choice(["01", "{ }", "</>", "#", "10", "::"]),
                                fill="#0b3b6e", font=("Courier", 8))
+
+        # Hood outline as fractions (0-1) of the canvas size, so it scales.
         hood = [(.50, .18), (.64, .24), (.70, .40), (.84, .55), (.96, .80),
                 (.96, 1.0), (.04, 1.0), (.04, .80), (.16, .55), (.30, .40),
                 (.36, .24)]
@@ -826,6 +1043,8 @@ class CyberGuardApp:
         for x, y in hood:
             pts.extend([x * w, y * h])
         canvas.create_polygon(*pts, fill="#050f1f", outline="#1a4f8f", width=2)
+
+        # Dark face and two glowing eyes.
         canvas.create_oval(w * .38, h * .30, w * .62, h * .58,
                            fill="#020812", outline="#0d3a6b")
         canvas.create_oval(w * .43, h * .40, w * .47, h * .43, fill=CYAN, outline="")
@@ -837,36 +1056,49 @@ class CyberGuardApp:
         canvas.delete("all")
         w, h = max(w, 200), max(h, 40)
 
+        # Try to draw the background picture.
         photo = self.bgm.cover(image_no, w, h)
         if photo is not None:
             canvas.photo = photo          # keep a reference
             canvas.create_image(0, 0, anchor="nw", image=photo)
+
+        # No picture available: use a plain dark rectangle instead.
         else:
             canvas.create_rectangle(0, 0, w, h, fill="#04132b", outline="")
 
+        # The decorative network of dots and lines (dashboard banner only).
         if fancy:
             rng = random.Random(12)
             nodes = [(rng.randint(int(w * .38), w), rng.randint(0, h))
                      for _ in range(40)]
+
+            # Connect nodes that are close to each other.
             for x, y in nodes:
                 for x2, y2 in nodes:
                     if x < x2 and abs(x - x2) < w * 0.15 and abs(y - y2) < h * 0.6:
                         canvas.create_line(x, y, x2, y2, fill="#104577")
+
+            # Every 7th node is a red "threat" dot; the rest are cyan.
             for index, (x, y) in enumerate(nodes):
                 color = RED if index % 7 == 0 else CYAN
                 r = 3 if index % 7 == 0 else 2
                 canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="")
+
+            # Wireframe globe made of three ellipses.
             cx, cy = w * 0.62, h * 0.55
             rx, ry = w * 0.17, h * 0.45
             canvas.create_oval(cx - rx, cy - ry, cx + rx, cy + ry, outline="#1265a2", width=2)
             canvas.create_oval(cx - rx * .55, cy - ry, cx + rx * .55, cy + ry, outline="#0d4779")
             canvas.create_oval(cx - rx, cy - ry * .5, cx + rx, cy + ry * .5, outline="#0d4779")
+
+            # Slogan only when the window is wide enough.
             if w > 760:
                 canvas.create_text(w - 160, h / 2 - 10, text="Smarter Analysis.",
                                    fill=CYAN, font=("Arial", 11, "bold"), anchor="w")
                 canvas.create_text(w - 160, h / 2 + 10, text="Safer Tomorrow.",
                                    fill=CYAN, font=("Arial", 11, "bold"), anchor="w")
 
+        # Title and subtitle text on top of everything.
         canvas.create_text(18, h * 0.36, text=title, fill=WHITE,
                            font=("Arial", 20 if fancy else 18, "bold"), anchor="w")
         canvas.create_text(18, h * 0.74, text=subtitle, fill="#c7d9f5",
@@ -875,6 +1107,8 @@ class CyberGuardApp:
     def draw_threat_map(self, canvas, w, h):
         canvas.delete("all")
         canvas.create_rectangle(0, 0, w, h, fill="#04142b", outline="")
+
+        # Rough continent shapes as fractions of the canvas size.
         continents = [
             [(.04, .25), (.14, .14), (.24, .20), (.26, .32), (.20, .43), (.16, .60), (.10, .50), (.08, .36)],
             [(.30, .23), (.40, .16), (.46, .25), (.44, .38), (.38, .40), (.36, .54), (.30, .43)],
@@ -882,18 +1116,23 @@ class CyberGuardApp:
             [(.52, .23), (.64, .15), (.76, .25), (.82, .39), (.74, .46), (.66, .38), (.58, .43), (.52, .34)],
             [(.70, .58), (.80, .55), (.84, .67), (.76, .73)],
         ]
+
+        # Convert fractions to real pixel positions and draw each shape.
         for shape in continents:
             coords = []
             for x, y in shape:
                 coords.extend([x * w, y * h])
             canvas.create_polygon(*coords, fill="#073967", outline=BLUE)
 
+        # Attack points; the pairs below are the curved lines joining them.
         points = [(.14, .34), (.18, .42), (.38, .31), (.45, .60), (.58, .35),
                   (.66, .30), (.74, .38), (.50, .48), (.28, .28), (.76, .62), (.46, .25)]
         for a, b in [(0, 3), (0, 8), (1, 4), (2, 5), (3, 6), (4, 7), (5, 9), (7, 10)]:
             canvas.create_line(points[a][0] * w, points[a][1] * h,
                                points[b][0] * w, points[b][1] * h,
                                fill="#a13c91", smooth=True)
+
+        # Each point is a red ring with a small bright centre.
         for x, y in points:
             canvas.create_oval(x * w - 7, y * h - 7, x * w + 7, y * h + 7,
                                outline=RED, width=2)
@@ -901,15 +1140,22 @@ class CyberGuardApp:
                                fill="#ff6685", outline="")
 
     def draw_ring(self, canvas, cx, cy, radius, thickness, segments):
+        # Draws a donut chart. segments = list of (value, colour).
         total = sum(v for v, _ in segments)
+
+        # No data: draw an empty grey ring.
         if total <= 0:
             canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius,
                                outline=BORDER, width=thickness)
             return
+
+        # Start at the top (90 degrees) and go clockwise (negative extent).
         start = 90
         for value, color in segments:
             if value <= 0:
                 continue
+
+            # Each segment's angle is its share of 360 degrees.
             extent = 360 * value / total
             canvas.create_arc(cx - radius, cy - radius, cx + radius, cy + radius,
                               start=start, extent=-min(extent, 359.9),
@@ -919,9 +1165,13 @@ class CyberGuardApp:
     def draw_line_chart(self, canvas, labels, values, w, h):
         canvas.delete("all")
         w, h = max(w, 300), max(h, 120)
+
+        # Chart area margins, and the scale: 4 steps up to a rounded maximum.
         left, right, top, bottom = 42, w - 22, 16, h - 30
         peak = max(max(values, default=0), 1)
         step = max(1, -(-peak // 4))
+
+        # Horizontal grid lines with their numbers.
         for tick in range(5):
             y = bottom - (bottom - top) * tick / 4
             canvas.create_line(left, y, right, y, fill="#102b4a")
@@ -931,6 +1181,8 @@ class CyberGuardApp:
             canvas.create_text(w / 2, h / 2, text="No data yet",
                                fill=MUTED, font=("Arial", 10))
             return
+
+        # Work out the pixel position of every data point.
         count = len(values)
         points = []
         for i, value in enumerate(values):
@@ -939,6 +1191,8 @@ class CyberGuardApp:
             points.append((x, y))
             canvas.create_text(x, bottom + 14, text=labels[i], fill=MUTED,
                                font=("Arial", 8))
+
+        # Coloured area under the line, then the line itself.
         area = [points[0][0], bottom]
         for x, y in points:
             area.extend([x, y])
@@ -947,18 +1201,25 @@ class CyberGuardApp:
             canvas.create_polygon(*area, fill="#16195a", outline="")
             flat = [c for p in points for c in p]
             canvas.create_line(*flat, fill=PURPLE, width=2)
+
+        # Dots with their values on top.
         for (x, y), value in zip(points, values):
             canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill=CYAN, outline=WHITE)
             canvas.create_text(x, y - 12, text=str(value), fill=WHITE,
                                font=("Arial", 8, "bold"))
 
     def draw_bars(self, canvas, items, w, h, horizontal=False):
+        # items = list of (name, value, colour).
         canvas.delete("all")
         w, h = max(w, 300), max(h, 180)
         if not items:
             canvas.create_text(w / 2, h / 2, text="No data yet", fill=MUTED)
             return
+
+        # The tallest bar defines the scale.
         peak = max(max(v for _, v, _ in items), 1)
+
+        # Horizontal bars: names on the left, bar length proportional to value.
         if horizontal:
             slot = (h - 20) / len(items)
             for i, (name, value, color) in enumerate(items):
@@ -970,6 +1231,8 @@ class CyberGuardApp:
                                         y + slot * 0.65, fill=color, outline="")
                 canvas.create_text(158 + length, y + slot * 0.4, text=str(value),
                                    fill=WHITE, font=("Arial", 9, "bold"), anchor="w")
+
+        # Vertical bars: axes, grid lines, then one rectangle per item.
         else:
             left, right, top, bottom = 45, w - 20, 25, h - 40
             canvas.create_line(left, top, left, bottom, fill=BORDER)
@@ -997,27 +1260,35 @@ class CyberGuardApp:
 
     def dashboard_page(self):
         body = self.body
+
+        # Two columns: wide left (weight 5) and narrower right (weight 3).
         body.grid_columnconfigure(0, weight=5)
         body.grid_columnconfigure(1, weight=3, minsize=350)
         body.grid_rowconfigure(1, weight=1)       # row 1 absorbs spare height
 
+        # Row 0: welcome banner across both columns.
         self.build_banner(body).grid(row=0, column=0, columnspan=2,
                                      sticky="ew", pady=(0, 10))
+
+        # Row 1: left and right columns.
         left = tk.Frame(body, bg=BG)
         left.grid(row=1, column=0, sticky="nsew", padx=(0, 10))
         right = tk.Frame(body, bg=BG)
         right.grid(row=1, column=1, sticky="nsew")
 
+        # Fill the left column from top to bottom.
         self.dash_cards(left)
         self.dash_middle(left)
         self.dash_recent(left)
         self.dash_bottom(left)
 
+        # Fill the right column.
         self.dash_alerts(right)
         self.dash_stats(right)
         self.dash_reports(right)
 
     def build_banner(self, parent):
+        # Welcome banner with a personalised title.
         banner = self.panel(parent)
         art = tk.Canvas(banner, height=84, bg=PANEL, highlightthickness=0)
         art.pack(fill="both", expand=True)
@@ -1029,15 +1300,18 @@ class CyberGuardApp:
         return banner
 
     def dash_cards(self, parent):
+        # Four summary cards in one row.
         row = tk.Frame(parent, bg=BG)
         row.pack(fill="x", pady=(0, 10))
         total = len(self.incidents)
         sev = self.severity_counts()
         high = sev["High"] + sev["Critical"]
 
+        # Local helper: percentage text (avoids dividing by zero).
         def pct(n):
             return f"{round(100 * n / total)}%" if total else "0%"
 
+        # Each card: title, big number, description, colour, icon symbol.
         cards = [
             ("Total Incidents", total, f"{len(self.active_incidents())} active now", RED, "!"),
             ("High Severity", high, f"{pct(high)} of total · requires attention", ORANGE, "▲"),
@@ -1045,9 +1319,13 @@ class CyberGuardApp:
             ("Low Severity", sev["Low"], f"{pct(sev['Low'])} of total · resolved / monitored", GREEN, "✓"),
         ]
         for col, (title, value, desc, color, symbol) in enumerate(cards):
+
+            # uniform="card" makes all four columns exactly the same width.
             row.grid_columnconfigure(col, weight=1, uniform="card")
             card = tk.Frame(row, bg=CARD, highlightbackground=color, highlightthickness=1)
             card.grid(row=0, column=col, sticky="nsew", padx=(0, 8 if col < 3 else 0))
+
+            # Circular icon on the left, text on the right.
             icon = tk.Canvas(card, width=46, height=46, bg=CARD, highlightthickness=0)
             icon.pack(side="left", padx=(10, 4), pady=10)
             icon.create_oval(3, 3, 43, 43, outline=color, width=2)
@@ -1060,6 +1338,7 @@ class CyberGuardApp:
                        justify="left").pack(anchor="w")
 
     def dash_middle(self, parent):
+        # Middle row: threat map (left) and donut chart (right).
         mid = tk.Frame(parent, bg=BG)
         mid.pack(fill="both", expand=True, pady=(0, 10))
         mid.grid_rowconfigure(0, weight=1)
@@ -1076,6 +1355,7 @@ class CyberGuardApp:
         canvas.bind("<Configure>",
                     lambda e: self.draw_threat_map(canvas, e.width, e.height))
 
+        # Floating "Top Attack Sources" box placed on the top-right of the map.
         sources = tk.Frame(map_panel, bg=CARD, highlightbackground=BORDER,
                            highlightthickness=1)
         sources.place(relx=1.0, x=-14, y=40, anchor="ne")
@@ -1089,6 +1369,7 @@ class CyberGuardApp:
         self.label(sources, "simulated locations", 7, MUTED, bg=CARD).pack(
             anchor="w", padx=8, pady=(2, 5))
 
+        # Colour legend placed on the bottom-left of the map.
         legend = tk.Frame(map_panel, bg=PANEL)
         legend.place(relx=0, x=14, rely=1.0, y=-14, anchor="sw")
         for name, color in [("High", RED), ("Medium", ORANGE), ("Low", GREEN)]:
@@ -1110,19 +1391,27 @@ class CyberGuardApp:
     def draw_type_donut(self, chart, width, height):
         chart.delete("all")
         width, height = max(width, 260), max(height, 150)
+
+        # Show the 4 most common types; group all the others as "Other".
         ranked = self.type_counts()
         shown = ranked[:4]
         other = sum(v for _, v in ranked[4:])
         if other:
             shown.append(("Other", other))
         total = len(self.incidents)
+
+        # One (value, colour) pair per ring segment.
         segments = [(v, TYPE_COLORS[i % len(TYPE_COLORS)])
                     for i, (_, v) in enumerate(shown)]
+
+        # Ring on the left with the total number in the middle.
         cx, cy = width * 0.26, height / 2
         radius = max(30, min(62, height / 2 - 14, width * 0.2))
         self.draw_ring(chart, cx, cy, radius, 20, segments)
         chart.create_text(cx, cy - 8, text=str(total), fill=WHITE, font=("Arial", 22, "bold"))
         chart.create_text(cx, cy + 14, text="Total", fill=MUTED, font=("Arial", 9))
+
+        # Legend on the right: colour dot, type name, count and percentage.
         y = cy - 30 * (len(shown) - 1) / 2
         for i, (name, value) in enumerate(shown):
             color = TYPE_COLORS[i % len(TYPE_COLORS)]
@@ -1135,6 +1424,7 @@ class CyberGuardApp:
             y += 30
 
     def dash_recent(self, parent):
+        # "Recent Incidents" table made from a grid of labels.
         panel = self.panel(parent)
         panel.pack(fill="x", pady=(0, 10))
         head = tk.Frame(panel, bg=PANEL)
@@ -1146,11 +1436,14 @@ class CyberGuardApp:
         grid = tk.Frame(panel, bg=PANEL)
         grid.pack(fill="x", padx=12, pady=(0, 10))
         grid.grid_columnconfigure(2, weight=1)
+
+        # Column headings, then a thin line under them.
         headers = ["ID", "Date & Time", "Type", "Severity", "Status", "Source IP", "Action"]
         for col, text in enumerate(headers):
             self.label(grid, text, 8, MUTED).grid(row=0, column=col, sticky="w", padx=6, pady=4)
         tk.Frame(grid, bg=BORDER, height=1).grid(row=1, column=0, columnspan=7, sticky="ew")
 
+        # The 6 newest incidents; each uses two grid rows (data + separator).
         recent = sorted(self.incidents, key=lambda i: i["id"], reverse=True)[:6]
         for n, inc in enumerate(recent):
             r = 2 + 2 * n
@@ -1160,6 +1453,8 @@ class CyberGuardApp:
             self.sev_pill(grid, inc["severity"]).grid(row=r, column=3, sticky="w", padx=6)
             self.status_pill(grid, inc["status"]).grid(row=r, column=4, sticky="w", padx=6)
             self.label(grid, inc["source"], 9, WHITE).grid(row=r, column=5, sticky="w", padx=6)
+
+            # i=inc["id"] stores THIS row's ID inside the button's command.
             tk.Button(grid, text="View", bg="#0c2a50", fg=BLUE, relief="flat", bd=0,
                       cursor="hand2", font=("Arial", 8, "bold"), padx=10,
                       activebackground=BLUE, activeforeground=WHITE,
@@ -1167,11 +1462,14 @@ class CyberGuardApp:
                       ).grid(row=r, column=6, sticky="w", padx=6)
             tk.Frame(grid, bg=BORDER, height=1).grid(row=r + 1, column=0,
                                                      columnspan=7, sticky="ew")
+
+        # Friendly message when there is nothing to show.
         if not recent:
             self.label(grid, "No incidents recorded yet.", 9, MUTED).grid(
                 row=2, column=0, columnspan=7, pady=14)
 
     def dash_bottom(self, parent):
+        # Bottom row: risk level (left) and quick actions (right).
         bottom = tk.Frame(parent, bg=BG)
         bottom.pack(fill="x")
         bottom.grid_columnconfigure(0, weight=1, uniform="b")
@@ -1183,6 +1481,8 @@ class CyberGuardApp:
         self.label(risk, "Security Risk Level", 11, WHITE, True).pack(anchor="w", padx=12, pady=(10, 4))
         inner = tk.Frame(risk, bg=PANEL)
         inner.pack(fill="x", padx=8, pady=(0, 10))
+
+        # Ring: coloured part = average risk, blue part = remaining to 100.
         level, score = self.overall_risk()
         ring = tk.Canvas(inner, width=140, height=140, bg=PANEL, highlightthickness=0)
         ring.pack(side="left", padx=6)
@@ -1190,6 +1490,8 @@ class CyberGuardApp:
                        [(score, LEVEL_COLOR[level]), (100 - score, "#123e70")])
         ring.create_text(70, 64, text=level, fill=WHITE, font=("Arial", 14, "bold"))
         ring.create_text(70, 84, text="Overall Risk", fill=MUTED, font=("Arial", 8))
+
+        # Risk level for each area (Network, Applications, ...).
         cats = tk.Frame(inner, bg=PANEL)
         cats.pack(side="left", fill="x", expand=True, padx=10)
         for name, lvl in self.category_levels().items():
@@ -1206,6 +1508,8 @@ class CyberGuardApp:
         tiles = tk.Frame(quick, bg=PANEL)
         tiles.pack(fill="both", expand=True, padx=8, pady=(0, 10))
         tiles.grid_rowconfigure(0, weight=1)
+
+        # Each tile: button text and the function it runs.
         actions = [
             ("＋\nAdd\nIncident", self.add_incident_dialog),
             ("▤\nGenerate\nReport", lambda: self.show_page("Reports")),
@@ -1221,11 +1525,13 @@ class CyberGuardApp:
                       ).grid(row=0, column=col, sticky="nsew", padx=3)
 
     def open_threat_search(self):
+        # Go to the Threat Intelligence page and put the cursor in its search box.
         self.show_page("Threat Intelligence")
         if self.threat_entry is not None:
             self.threat_entry.focus_set()
 
     def dash_alerts(self, parent):
+        # "Recent Alerts" list on the right side of the dashboard.
         panel = self.panel(parent)
         panel.pack(fill="x", pady=(0, 10))
         head = tk.Frame(panel, bg=PANEL)
@@ -1239,23 +1545,32 @@ class CyberGuardApp:
             color = SEV_COLOR.get(inc["severity"], MUTED)
             row = tk.Frame(panel, bg=PANEL, cursor="hand2")
             row.pack(fill="x", padx=10, pady=5)
+
+            # Round "!" icon coloured by severity.
             icon = tk.Canvas(row, width=42, height=42, bg=PANEL, highlightthickness=0)
             icon.pack(side="left", padx=(0, 8))
             icon.create_oval(3, 3, 39, 39, outline=color, width=2, fill="#10172f")
             icon.create_text(21, 21, text="!", fill=color, font=("Arial", 15, "bold"))
+
+            # Title, source IP and severity pill in the middle.
             info = tk.Frame(row, bg=PANEL)
             info.pack(side="left", fill="x", expand=True)
             self.label(info, inc["title"], 9, WHITE, True, wraplength=180,
                        justify="left").pack(anchor="w")
             self.label(info, f"from {inc['source']}", 8, MUTED).pack(anchor="w")
             self.sev_pill(info, inc["severity"]).pack(anchor="w", pady=(3, 0))
+
+            # "x min ago" on the right.
             self.label(row, time_ago(parse_created(inc["created"])), 8, MUTED).pack(side="right")
+
+            # Clicking anywhere on the row opens the incident details.
             for widget in (row, icon, info):
                 widget.bind("<Button-1>", lambda e, i=inc["id"]: self.view_incident(i))
         if not recent:
             self.label(panel, "No alerts.", 9, MUTED).pack(pady=14)
 
     def dash_stats(self, parent):
+        # Line chart "Threat Statistics".
         panel = self.panel(parent)
         panel.pack(fill="both", expand=True, pady=(0, 10))
         self.label(panel, "Threat Statistics", 12, WHITE, True).pack(anchor="w", padx=12, pady=(10, 0))
@@ -1263,11 +1578,14 @@ class CyberGuardApp:
             anchor="w", padx=12, pady=(0, 4))
         chart = tk.Canvas(panel, height=120, bg=PANEL, highlightthickness=0)
         chart.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # The data is calculated once; the chart is redrawn when the size changes.
         labels, values = self.daily_series()
         chart.bind("<Configure>",
                    lambda e: self.draw_line_chart(chart, labels, values, e.width, e.height))
 
     def dash_reports(self, parent):
+        # "Latest Reports" list with a Download button for each report.
         panel = self.panel(parent)
         panel.pack(fill="x")
         head = tk.Frame(panel, bg=PANEL)
@@ -1277,6 +1595,8 @@ class CyberGuardApp:
                     bg=PANEL, fg=BLUE, padx=5, pady=2).pack(side="right")
         stamp = datetime.now().strftime("%b %d, %Y")
         for kind, name in REPORTS:
+
+            # The report is generated just to measure its size in KB.
             size = len(self.build_report(kind).encode("utf-8")) / 1024
             row = tk.Frame(panel, bg=PANEL)
             row.pack(fill="x", padx=12, pady=5)
@@ -1296,11 +1616,13 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def incidents_page(self):
+        # Page title and the "Add Incident" button.
         head = tk.Frame(self.body, bg=BG)
         head.pack(fill="x", pady=(0, 8))
         self.label(head, "Incident Management", 21, WHITE, True, bg=BG).pack(side="left")
         self.button(head, "+ Add Incident", self.add_incident_dialog, bg=BLUE).pack(side="right")
 
+        # Filter bar: two drop-downs and the action buttons.
         bar = tk.Frame(self.body, bg=BG)
         bar.pack(fill="x", pady=(0, 8))
         self.sev_filter = tk.StringVar(value="All")
@@ -1310,12 +1632,15 @@ class CyberGuardApp:
             combo = ttk.Combobox(bar, textvariable=var, values=values,
                                  state="readonly", width=13)
             combo.pack(side="left", ipady=4, padx=(0, 6))
+
+            # Choosing a value redraws only the table (not the whole page).
             combo.bind("<<ComboboxSelected>>", lambda e: self.render_incident_table())
         self.button(bar, "View Details", self.view_selected).pack(side="left", padx=3)
         self.button(bar, "Update Status", self.update_selected).pack(side="left", padx=3)
         self.button(bar, "Delete Selected", self.delete_selected, bg="#54223b").pack(side="left", padx=3)
         self.button(bar, "Export CSV", self.export_csv, fg=CYAN).pack(side="left", padx=3)
 
+        # When a search is active, show a chip with a Clear button.
         if self.search_query:
             chip = tk.Frame(self.body, bg=BG)
             chip.pack(fill="x", pady=(0, 6))
@@ -1323,47 +1648,62 @@ class CyberGuardApp:
             self.button(chip, "Clear", self.clear_search, bg=BG, fg=ORANGE,
                         padx=6, pady=2).pack(side="left", padx=8)
 
+        # Container for the table, then draw the table.
         self.table_host = self.panel(self.body)
         self.table_host.pack(fill="both", expand=True)
         self.render_incident_table()
 
     def clear_search(self):
+        # Remove the search text and show every incident again.
         self.search_query = ""
         self.search_entry.delete(0, "end")
         self.show_page("Incidents")
 
     def render_incident_table(self):
+        # Remove the old table before drawing a new one.
         for widget in self.table_host.winfo_children():
             widget.destroy()
         records = self.filtered_incidents()
+
+        # Nothing matches the filters: show a message instead.
         if not records:
             self.tree = None
             self.label(self.table_host, "No incidents match the current filters.",
                        10, MUTED).pack(pady=40)
             return
 
+        # Treeview is Tkinter's table widget.
         columns = ("id", "created", "title", "type", "severity", "status", "source", "risk")
         tree = ttk.Treeview(self.table_host, columns=columns, show="headings",
                             height=min(16, max(len(records), 4)),
                             selectmode="browse")
+
+        # Column key, heading text and width.
         for key, title, width in [("id", "ID", 80), ("created", "Date & Time", 115),
                                   ("title", "Incident", 240), ("type", "Type", 130),
                                   ("severity", "Severity", 80), ("status", "Status", 105),
                                   ("source", "Source IP", 120), ("risk", "Risk", 50)]:
             tree.heading(key, text=title)
             tree.column(key, width=width, anchor="w")
+
+        # Tags colour a row's text by its severity.
         for level, color in SEV_COLOR.items():
             tree.tag_configure(level, foreground=color)
+
+        # Insert one row per incident (the risk score is calculated live).
         for inc in records:
             tree.insert("", "end", tags=(inc["severity"],), values=(
                 incident_code(inc["id"]), inc["created"], inc["title"],
                 inc["type"], inc["severity"], inc["status"], inc["source"],
                 risk_score(inc)))
         tree.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # Double-click a row to open the details window.
         tree.bind("<Double-1>", lambda e: self.view_selected())
         self.tree = tree
 
     def selected_id(self):
+        # Return the numeric ID of the selected table row (or None + a message).
         if self.tree is None or not self.tree.winfo_exists():
             messagebox.showinfo("Select incident", "Open the Incidents page and select a row.")
             return None
@@ -1371,6 +1711,8 @@ class CyberGuardApp:
         if not selection:
             messagebox.showinfo("Select incident", "Select an incident row first.")
             return None
+
+        # The table shows "CG-1024"; remove "CG-" to get the number 1024.
         code = str(self.tree.item(selection[0], "values")[0])
         try:
             return int(code.replace("CG-", ""))
@@ -1378,11 +1720,13 @@ class CyberGuardApp:
             return None
 
     def view_selected(self):
+        # Open the details window for the selected row.
         incident_id = self.selected_id()
         if incident_id is not None:
             self.view_incident(incident_id)
 
     def update_selected(self):
+        # Open the status dialog for the selected row.
         incident_id = self.selected_id()
         incident = self.find(incident_id) if incident_id is not None else None
         if incident:
@@ -1393,10 +1737,14 @@ class CyberGuardApp:
         incident = self.find(incident_id) if incident_id is not None else None
         if not incident:
             return
+
+        # Business rule: only Resolved incidents can be deleted.
         if incident["status"] != "Resolved":
             messagebox.showwarning("Cannot delete",
                                    "Only Resolved incidents can be deleted.")
             return
+
+        # Ask for confirmation, then delete, save and refresh the page.
         if messagebox.askyesno("Confirm deletion", f'Delete "{incident["title"]}"?'):
             self.incidents.remove(incident)
             self.save_data()
@@ -1407,12 +1755,14 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def add_incident_dialog(self):
+        # Pop-up form for registering a new incident.
         dialog = self.make_dialog("Register Security Incident", 470, 600)
         form = tk.Frame(dialog, bg=PANEL, padx=22, pady=16,
                         highlightbackground=BORDER, highlightthickness=1)
         form.pack(fill="both", expand=True, padx=12, pady=12)
         self.label(form, "REGISTER INCIDENT", 16, CYAN, True).pack(anchor="w", pady=(0, 8))
 
+        # Small local helpers so the form code stays short.
         def caption(text):
             self.label(form, text, 9, MUTED).pack(anchor="w", pady=(8, 3))
 
@@ -1421,6 +1771,7 @@ class CyberGuardApp:
             widget.pack(fill="x", ipady=7)
             return widget
 
+        # The form fields: text boxes and drop-downs.
         caption("Incident title")
         title = entry()
         caption("Incident type")
@@ -1435,9 +1786,12 @@ class CyberGuardApp:
         notes = entry()
 
         def save():
+            # Read and clean the values from the form.
             text = title.get().strip()
             ip = source.get().strip()
             note = notes.get().strip()
+
+            # Validation: the first rule that fails sets "problem".
             problem = None
             if not text:
                 problem = "Please enter an incident title."
@@ -1446,20 +1800,28 @@ class CyberGuardApp:
             elif severity.get() == "Critical" and not note:
                 problem = "Critical incidents must include notes."
             else:
+
+                # Duplicate check: same title + same IP + not yet resolved.
                 for item in self.incidents:
                     if (item["title"].lower() == text.lower()
                             and item["source"] == ip
                             and item["status"] != "Resolved"):
                         problem = f"Duplicate of open incident {incident_code(item['id'])}."
                         break
+
+            # Show the problem and keep the form open.
             if problem:
                 messagebox.showwarning("Cannot save", problem, parent=dialog)
                 return
+
+            # All rules passed: create the dictionary and add it to the list.
             self.incidents.append({
                 "id": self.next_id(),
                 "created": datetime.now().strftime("%b %d, %H:%M"),
                 "title": text, "type": kind.get(), "severity": severity.get(),
                 "status": "Open", "source": ip, "notes": note})
+
+            # Save, close the dialog and refresh the current page.
             self.save_data()
             dialog.destroy()
             self.show_page(self.current_page)
@@ -1467,6 +1829,7 @@ class CyberGuardApp:
         self.button(form, "SAVE INCIDENT", save, bg=BLUE).pack(fill="x", pady=(18, 0))
 
     def view_incident(self, incident_id):
+        # Details window for one incident.
         incident = self.find(incident_id)
         if incident is None:
             messagebox.showinfo("Not found", "That incident no longer exists.")
@@ -1477,6 +1840,8 @@ class CyberGuardApp:
         box.pack(fill="both", expand=True, padx=12, pady=12)
         self.label(box, f"{incident_code(incident_id)}  ·  {incident['title']}",
                    14, CYAN, True, wraplength=450, justify="left").pack(anchor="w", pady=(0, 10))
+
+        # One row per field: name on the left, value on the right.
         rows = [("Type", incident["type"]), ("Severity", incident["severity"]),
                 ("Status", incident["status"]), ("Source IP", incident["source"]),
                 ("Location", country_of(incident["source"]) + " (simulated)"),
@@ -1487,12 +1852,16 @@ class CyberGuardApp:
             line.pack(fill="x", pady=3)
             self.label(line, name, 9, MUTED, width=10, anchor="w").pack(side="left")
             self.label(line, value, 9, WHITE, wraplength=330, justify="left").pack(side="left")
+
+        # Risk bar: width is proportional to the 0-100 score.
         score = risk_score(incident)
         self.label(box, f"Risk score: {score}/100", 9, MUTED).pack(anchor="w", pady=(10, 3))
         bar = tk.Canvas(box, width=320, height=14, bg=CARD, highlightthickness=0)
         bar.pack(anchor="w")
         bar.create_rectangle(0, 0, 320 * score / 100, 14,
                              fill=LEVEL_COLOR[level_of(score)], outline="")
+
+        # Buttons: update the status (closing this window first) or close.
         actions = tk.Frame(box, bg=PANEL)
         actions.pack(fill="x", pady=(18, 0))
         self.button(actions, "Update Status",
@@ -1501,18 +1870,22 @@ class CyberGuardApp:
         self.button(actions, "Close", dialog.destroy).pack(side="left", padx=8)
 
     def status_dialog(self, incident):
+        # Small window for choosing the next status.
         dialog = self.make_dialog("Update status", 380, 230)
         box = tk.Frame(dialog, bg=PANEL, padx=20, pady=16,
                        highlightbackground=BORDER, highlightthickness=1)
         box.pack(fill="both", expand=True, padx=12, pady=12)
         self.label(box, f"{incident_code(incident['id'])}: currently {incident['status']}",
                    10, WHITE, True).pack(anchor="w", pady=(0, 10))
+
+        # Pre-select the next status in the list (stay at the last one).
         nxt = min(STATUSES.index(incident["status"]) + 1, len(STATUSES) - 1)
         choice = tk.StringVar(value=STATUSES[nxt])
         ttk.Combobox(box, textvariable=choice, values=STATUSES,
                      state="readonly").pack(fill="x", ipady=4)
 
         def apply():
+            # Reuse the business rules from status_error().
             problem = self.status_error(incident, choice.get())
             if problem:
                 messagebox.showwarning("Not allowed", problem, parent=dialog)
@@ -1531,6 +1904,8 @@ class CyberGuardApp:
     def threat_page(self):
         self.page_heading("Threat Intelligence",
                           "Learn about common cybersecurity incidents and first response steps.")
+
+        # Live search box: the cards are redrawn after every key press.
         bar = tk.Frame(self.body, bg=BG)
         bar.pack(fill="x", pady=(0, 8))
         self.label(bar, "Search threats:", 9, MUTED, bg=BG).pack(side="left")
@@ -1547,19 +1922,28 @@ class CyberGuardApp:
                    8, MUTED, bg=BG).pack(anchor="w", pady=6)
 
     def render_threat_cards(self):
+        # Clear the old cards.
         for widget in self.grid_host.winfo_children():
             widget.destroy()
+
+        # Keep only threats whose text contains the search words.
         query = self.threat_var.get().strip().lower()
         shown = [t for t in THREATS if not query or query in " ".join(
             [t[0], t[2], t[3]]).lower()]
+
+        # Two equal columns of cards.
         self.grid_host.grid_columnconfigure(0, weight=1, uniform="t")
         self.grid_host.grid_columnconfigure(1, weight=1, uniform="t")
         if not shown:
             self.label(self.grid_host, "No matching threats.", 10, MUTED, bg=BG).grid(row=0, column=0, pady=20)
             return
         for index, (name, color, description, action) in enumerate(shown):
+
+            # Count how many recorded incidents belong to this threat type.
             matching = [i for i in self.incidents if i["type"].upper() == name]
             active = [i for i in matching if i["status"] in ("Open", "Investigating")]
+
+            # index // 2 = row, index % 2 = column (two cards per row).
             card = self.panel(self.grid_host)
             card.grid(row=index // 2, column=index % 2, sticky="nsew", padx=6, pady=6)
             self.label(card, "◈  " + name, 12, color, True).pack(anchor="w", padx=14, pady=(12, 6))
@@ -1576,9 +1960,12 @@ class CyberGuardApp:
     # --------------------------------------------------------
 
     def build_report(self, kind):
+        # Build a report as plain text: a list of lines joined at the end.
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         counts = self.severity_counts()
         lines = []
+
+        # Weekly report: totals, severity counts, overall risk, risk by area.
         if kind == "weekly":
             lines += ["CYBERGUARD WEEKLY SECURITY REPORT", f"Generated: {stamp}",
                       "Educational simulator; not a live threat assessment.", "",
@@ -1589,12 +1976,16 @@ class CyberGuardApp:
             lines += ["", f"Overall risk: {level} (average active risk {score})", "",
                       "RISK BY AREA"]
             lines += [f"  {k}: {v}" for k, v in self.category_levels().items()]
+
+        # Summary report: one line per incident, newest first.
         elif kind == "summary":
             lines += ["CYBERGUARD INCIDENT SUMMARY", f"Generated: {stamp}", "",
                       "INCIDENTS"]
             for i in sorted(self.incidents, key=lambda x: x["id"], reverse=True):
                 lines.append(f"{incident_code(i['id'])} | {i['created']} | {i['severity']} | "
                              f"{i['status']} | {i['type']} | {i['title']} | {i['source']}")
+
+        # Intelligence report: each threat with its description and first step.
         else:
             lines += ["CYBERGUARD THREAT INTELLIGENCE REPORT", f"Generated: {stamp}", ""]
             for name, _, desc, action in THREATS:
@@ -1604,10 +1995,13 @@ class CyberGuardApp:
         return "\n".join(lines)
 
     def download_report(self, kind):
+        # Ask the user where to save the report (Save As dialog).
         name = dict(REPORTS)[kind]
         path = filedialog.asksaveasfilename(
             defaultextension=".txt", filetypes=[("Text files", "*.txt")],
             initialfile=name.split(" (")[0].replace(" ", "_").lower() + ".txt")
+
+        # An empty path means the user pressed Cancel.
         if not path:
             return
         try:
@@ -1619,6 +2013,8 @@ class CyberGuardApp:
     def reports_page(self):
         self.page_heading("Reports & Exports",
                           "Download reports and export incident records for spreadsheets and backups.")
+
+        # Each card: title, description, button text, function to run.
         cards = [(name, "Generate a readable text report from the current data.",
                   "DOWNLOAD", lambda k=kind: self.download_report(k))
                  for kind, name in REPORTS]
@@ -1634,14 +2030,20 @@ class CyberGuardApp:
             self.button(card, text, command, bg=BLUE).pack(anchor="w", padx=16, pady=(0, 12))
 
     def export_csv(self):
+        # Ask where to save the CSV file.
         path = filedialog.asksaveasfilename(
             defaultextension=".csv", filetypes=[("CSV files", "*.csv")],
             initialfile="cyberguard_incidents.csv")
         if not path:
             return
+
+        # These are the columns written to the CSV file.
         fields = ["id", "created", "title", "type", "severity", "status", "source", "notes"]
         try:
+            # newline="" prevents blank lines between rows on Windows.
             with open(path, "w", newline="", encoding="utf-8") as file:
+
+                # DictWriter writes dictionaries as CSV rows.
                 writer = csv.DictWriter(file, fieldnames=fields)
                 writer.writeheader()
                 for item in self.incidents:
@@ -1651,6 +2053,7 @@ class CyberGuardApp:
             messagebox.showerror("Export error", str(error))
 
     def export_json(self):
+        # Save a complete backup copy of all incidents as JSON.
         path = filedialog.asksaveasfilename(
             defaultextension=".json", filetypes=[("JSON files", "*.json")],
             initialfile="cyberguard_backup.json")
@@ -1669,6 +2072,8 @@ class CyberGuardApp:
     def analytics_page(self):
         self.page_heading("Security Analytics",
                           "Statistics calculated from locally saved incident records.")
+
+        # Row of four number cards, one per severity level.
         counts = self.severity_counts()
         row = tk.Frame(self.body, bg=BG)
         row.pack(fill="x", pady=(0, 10))
@@ -1679,12 +2084,14 @@ class CyberGuardApp:
             self.label(card, level.upper(), 9, SEV_COLOR[level], True).pack(anchor="w", padx=13, pady=(12, 2))
             self.label(card, str(counts[level]), 24, WHITE, True).pack(anchor="w", padx=13, pady=(0, 12))
 
+        # Two charts side by side.
         pair = tk.Frame(self.body, bg=BG)
         pair.pack(fill="both", expand=True, pady=(0, 10))
         pair.grid_rowconfigure(0, weight=1)
         pair.grid_columnconfigure(0, weight=1, uniform="p")
         pair.grid_columnconfigure(1, weight=1, uniform="p")
 
+        # Left chart: vertical bars by severity.
         sev_panel = self.panel(pair)
         sev_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         self.label(sev_panel, "INCIDENTS BY SEVERITY", 10, CYAN, True).pack(anchor="w", padx=14, pady=10)
@@ -1693,6 +2100,7 @@ class CyberGuardApp:
         sev_items = [(lvl, counts[lvl], SEV_COLOR[lvl]) for lvl in ("Critical", "High", "Medium", "Low")]
         c1.bind("<Configure>", lambda e: self.draw_bars(c1, sev_items, e.width, e.height))
 
+        # Right chart: horizontal bars by incident type.
         type_panel = self.panel(pair)
         type_panel.grid(row=0, column=1, sticky="nsew")
         self.label(type_panel, "INCIDENTS BY TYPE", 10, CYAN, True).pack(anchor="w", padx=14, pady=10)
@@ -1702,6 +2110,7 @@ class CyberGuardApp:
                       for i, (n, v) in enumerate(self.type_counts())]
         c2.bind("<Configure>", lambda e: self.draw_bars(c2, type_items, e.width, e.height, True))
 
+        # Bottom chart: incidents per day as a line chart.
         trend = self.panel(self.body)
         trend.pack(fill="both", expand=True)
         self.label(trend, "INCIDENTS PER DAY", 10, CYAN, True).pack(anchor="w", padx=14, pady=10)
@@ -1717,6 +2126,7 @@ class CyberGuardApp:
     def settings_page(self):
         self.page_heading("Settings", "Application information and local data controls.")
 
+        # Analyst profile: a text box and a Save button.
         profile = self.panel(self.body)
         profile.pack(fill="x", pady=(0, 10))
         self.label(profile, "ANALYST PROFILE", 10, CYAN, True).pack(anchor="w", padx=16, pady=(14, 6))
@@ -1727,6 +2137,7 @@ class CyberGuardApp:
                  insertbackground=WHITE, relief="flat").pack(side="left", ipady=6)
 
         def save_name():
+            # Reject an empty name; otherwise save it and update the top bar.
             value = name_var.get().strip()
             if not value:
                 messagebox.showwarning("Missing name", "Please enter a name.")
@@ -1738,6 +2149,7 @@ class CyberGuardApp:
 
         self.button(line, "Save name", save_name, bg=BLUE).pack(side="left", padx=8)
 
+        # Application information card.
         info = self.panel(self.body)
         info.pack(fill="x", pady=(0, 10))
         self.label(info, "APPLICATION", 10, CYAN, True).pack(anchor="w", padx=16, pady=(14, 6))
@@ -1748,6 +2160,7 @@ class CyberGuardApp:
         self.label(info, "Records are saved locally beside main.py.", 9, MUTED).pack(
             anchor="w", padx=16, pady=(3, 14))
 
+        # Educational limitations notice.
         limits = self.panel(self.body)
         limits.pack(fill="x", pady=(0, 10))
         self.label(limits, "EDUCATIONAL LIMITATIONS", 10, ORANGE, True).pack(anchor="w", padx=16, pady=(14, 6))
@@ -1756,12 +2169,14 @@ class CyberGuardApp:
                    "alerts and map locations are simulated, and risk scores use simple rules.",
                    9, MUTED, wraplength=850, justify="left").pack(anchor="w", padx=16, pady=(0, 14))
 
+        # Data-control buttons (both ask for confirmation first).
         buttons = tk.Frame(self.body, bg=BG)
         buttons.pack(anchor="w")
         self.button(buttons, "Restore demo sample data", self.restore_demo, fg=CYAN).pack(side="left", padx=(0, 8))
         self.button(buttons, "Clear all incidents", self.clear_all, bg="#54223b").pack(side="left")
 
     def restore_demo(self):
+        # Replace all incidents with the demo data (after confirmation).
         if messagebox.askyesno("Restore demo data",
                                "Replace all current incidents with the demo records?"):
             self.incidents = build_seed()
@@ -1769,6 +2184,7 @@ class CyberGuardApp:
             self.show_page("Dashboard")
 
     def clear_all(self):
+        # Delete every incident (after confirmation).
         if messagebox.askyesno("Clear all", "Delete every incident? This cannot be undone."):
             self.incidents = []
             self.save_data()
@@ -1780,14 +2196,22 @@ class CyberGuardApp:
 # ------------------------------------------------------------
 
 def launch_gui():
+    # Create the main window, build the app inside it and start the event loop.
     root = tk.Tk()
     CyberGuardApp(root)
+
+    # mainloop() keeps the window open and reacts to clicks until it is closed.
     root.mainloop()
 
 
+# Run only when this file is started directly (not when imported by cli.py).
 if __name__ == "__main__":
+
+    # python3 main.py --gui  -> open the graphical dashboard.
     if "--gui" in sys.argv:
         launch_gui()
+
+    # Otherwise start the terminal application from cli.py.
     else:
         import cli
         cli.main()

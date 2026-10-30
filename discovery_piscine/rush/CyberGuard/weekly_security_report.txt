@@ -1,20 +1,20 @@
 CYBERGUARD WEEKLY SECURITY REPORT
-Generated: 2026-10-29 20:02
+Generated: 2026-10-30 11:09
 Educational simulator; not a live threat assessment.
 
-Total incidents: 3
-Active incidents: 3
+Total incidents: 6
+Active incidents: 4
 
-Critical severity: 0
-High severity: 1
-Medium severity: 2
-Low severity: 0
+Critical severity: 2
+High severity: 2
+Medium severity: 1
+Low severity: 1
 
-Overall risk: Medium (average active risk 53)
+Overall risk: Medium (average active risk 68)
 
 RISK BY AREA
   Network: Low
-  Applications: Medium
+  Applications: Low
   Endpoints: Low
-  Data: Low
+  Data: High
   Users: High

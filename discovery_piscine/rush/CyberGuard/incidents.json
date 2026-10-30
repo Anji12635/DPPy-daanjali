@@ -20,16 +20,6 @@
     "notes": ""
   },
   {
-    "id": 1003,
-    "created": "Oct 29, 19:56",
-    "title": "hi",
-    "type": "Phishing",
-    "severity": "Medium",
-    "status": "Resolved",
-    "source": "234.65.2.2",
-    "notes": ""
-  },
-  {
     "id": 1004,
     "created": "Oct 29, 21:00",
     "title": "HI",
@@ -45,8 +35,28 @@
     "title": "hacking",
     "type": "Data Breach",
     "severity": "Critical",
-    "status": "Investigating",
+    "status": "Resolved",
     "source": "123.67.8.9",
     "notes": "hacking"
+  },
+  {
+    "id": 1006,
+    "created": "Oct 30, 11:07",
+    "title": "hacking",
+    "type": "Data Breach",
+    "severity": "High",
+    "status": "Open",
+    "source": "123.45.6.7",
+    "notes": ""
+  },
+  {
+    "id": 1007,
+    "created": "Oct 30, 11:34",
+    "title": "Hello",
+    "type": "Phishing",
+    "severity": "Medium",
+    "status": "Open",
+    "source": "123.78.67.0",
+    "notes": "xx"
   }
 ]

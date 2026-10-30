@@ -1,7 +1,10 @@
 CYBERGUARD INCIDENT SUMMARY
-Generated: 2026-10-29 20:02
+Generated: 2026-10-30 11:09
 
 INCIDENTS
-CG-1003 | Oct 29, 19:56 | Medium | Open | Phishing | hi | 234.65.2.2
-CG-1002 | Oct 29, 19:56 | Medium | Open | Phishing | hi | 12.123.1.1
+CG-1007 | Oct 30, 11:08 | Critical | Resolved | Phishing | hi | 123.56.78.89
+CG-1006 | Oct 30, 11:07 | High | Open | Data Breach | hacking | 123.45.6.7
+CG-1005 | Oct 29, 21:21 | Critical | Investigating | Data Breach | hacking | 123.67.8.9
+CG-1004 | Oct 29, 21:00 | Low | Open | Phishing | HI | 144.90.9.8
+CG-1002 | Oct 29, 19:56 | Medium | Resolved | Phishing | hi | 12.123.1.1
 CG-1001 | Oct 29, 19:54 | High | Open | Suspicious Login | cyber hacking | 192.243.1.1
